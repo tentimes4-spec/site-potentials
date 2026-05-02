@@ -1,0 +1,76 @@
+name: Monthly map refresh
+
+# Fires on the 5th of each month around 9:37 AM ET (13:37 UTC).
+# The odd minute is intentional: GitHub crons get delayed when many fire on
+# the hour, so the docs recommend an off-hour minute.
+# You can also trigger manually from the Actions tab via the "Run workflow" button.
+on:
+  schedule:
+    - cron: '37 13 5 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed so the job can commit map.html back to the repo
+  pages: write
+  id-token: write
+
+# Only one Pages deploy at a time
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install openpyxl
+
+      - name: Build map (downloads latest EIA-860M)
+        run: python3 build_map.py
+
+      - name: Commit refreshed map
+        id: commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          if [[ -n "$(git status --porcelain map.html)" ]]; then
+            git add map.html
+            git commit -m "Refresh map for $(date -u '+%Y-%m')"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No changes to map.html"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stage Pages content
+        run: |
+          mkdir -p _site
+          cp map.html _site/index.html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: refresh
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

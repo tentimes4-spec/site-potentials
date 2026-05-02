@@ -1,0 +1,14 @@
+# EIA xlsx downloads — fetched fresh each Actions run, no need to commit
+data/eia860m/*.xlsx
+
+# build_map.py creates a one-time backup of map.html on first run
+*.bak
+
+# Local launchd run artifacts (kept on disk, not in repo)
+refresh.log
+last_run_summary.txt
+
+# Python and macOS noise
+__pycache__/
+*.pyc
+.DS_Store
