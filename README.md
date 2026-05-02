@@ -1,100 +1,83 @@
 # US Generation Map (Site Potentials)
 
-Interactive map of every operating US power generator. Data comes from the
-[EIA-860M](https://www.eia.gov/electricity/data/eia860m/) monthly preliminary
-inventory; the build script downloads the latest file and rewrites `map.html`
-in place so the map can be refreshed every month.
+Interactive map of every operating US power generator, refreshed monthly from
+the [EIA-860M](https://www.eia.gov/electricity/data/eia860m/) inventory. The
+map shows ~14,000 plants and ~28,000 generators across all 50 states plus DC,
+color-coded by primary fuel and sized by nameplate capacity.
 
-## Files
+**Live URL: https://tentimes4-spec.github.io/site-potentials/**
+
+## How it stays current
+
+A GitHub Actions workflow (`.github/workflows/refresh.yml`) fires on the 5th
+of each month at ~9:37 AM ET. On every run it:
+
+1. Downloads the latest EIA-860M xlsx from `eia.gov`
+2. Runs `build_map.py` to regenerate `map.html`
+3. Commits the new `map.html` back to the repo if anything changed
+4. Redeploys GitHub Pages so the live URL serves the new version
+
+You can also fire the workflow on demand from the Actions tab of the repo:
+**Actions** → **Monthly map refresh** → **Run workflow**.
+
+## Files in this repo
 
 | Path | What it is |
 |------|------------|
-| `map.html` | The map. Open directly in a browser (file://). |
-| `build_map.py` | Ingest script. Reads the xlsx, regenerates `map.html`. |
-| `data/eia860m/YYYY-MM.xlsx` | Downloaded EIA-860M files, one per month. |
-| `map.html.bak` | One-time backup taken before the first script run. |
+| `map.html` | The map. Open the live URL above, or open this file directly in a browser. |
+| `build_map.py` | The ingest script. Reads the xlsx, regenerates `map.html`. |
+| `.github/workflows/refresh.yml` | The Actions workflow that runs the script monthly. |
+| `.gitignore` | Keeps downloaded xlsx files and local logs out of the repo. |
 
-## Usage
+## Running locally
 
-### Refresh from the latest EIA-860M (typical case)
+If you want to test changes to `build_map.py` or rebuild `map.html` from a
+specific month without waiting for the cron, you can run it on your Mac:
 
 ```bash
 cd "/Users/jasonmasters/Desktop/Ground Floor Energy/Research/Site Potentials"
 python3 build_map.py
 ```
 
-The script tries the current month, then walks backward up to four months
-to find the most recent published file. EIA only hosts the latest at
-`/xls/`; older months live at `/archive/xls/`. Both paths are tried.
+Defaults: downloads the latest EIA-860M into `data/eia860m/`, regenerates
+`map.html` next to the script. The xlsx files are cached locally so re-runs
+of the same month do not re-download.
 
-Downloaded files are saved to `data/eia860m/YYYY-MM.xlsx` and reused on
-later runs (no redownload if the file already exists).
-
-### Run against a specific local file
-
+Other modes:
 ```bash
-python3 build_map.py --xlsx data/eia860m/2026-02.xlsx
+python3 build_map.py --xlsx data/eia860m/2026-02.xlsx   # specific local file
+python3 build_map.py --month 2026-03                    # specific month
+python3 build_map.py --no-download                      # use newest local file
 ```
 
-### Run offline (use the most recent local file)
+Dependencies: Python 3.9+ and `openpyxl` (install with `pip3 install --user openpyxl`).
 
-```bash
-python3 build_map.py --no-download
-```
+## Keeping your local copy in sync
 
-### Pin to a specific month
+The Action updates the *cloud* copy of `map.html` every month. Your local
+copy stays at whatever version you last pulled. You have two options:
 
-```bash
-python3 build_map.py --month 2026-03
-```
+- **Just use the live URL.** Bookmark `https://tentimes4-spec.github.io/site-potentials/`
+  and the latest map is always one click away. No git knowledge needed.
+- **Pull the latest into your local folder.** When you want the file on your
+  Mac to match the cloud:
+  ```bash
+  cd "/Users/jasonmasters/Desktop/Ground Floor Energy/Research/Site Potentials"
+  git pull
+  ```
 
-## How the script edits map.html
+## How the map.html edits work
 
-`build_map.py` only touches six pieces of the file. Everything else is
-preserved byte-for-byte.
+`build_map.py` rewrites six narrow sections of `map.html` and leaves
+everything else untouched. Five of them are bracketed by HTML/JS comment
+markers like `<!-- BEGIN AUTOGEN STATE_PANEL -->` and
+`<!-- END AUTOGEN STATE_PANEL -->`; the sixth is the inline
+`const plants = [...]` line. As long as those markers stay in the file, you
+can edit any surrounding HTML, CSS, or JS by hand and the script will respect
+your edits.
 
-1. The `const plants = [...]` line (the inline JSON dataset).
-2. The state-toggle list in the layer panel, between
-   `<!-- BEGIN AUTOGEN STATE_PANEL -->` and `<!-- END AUTOGEN STATE_PANEL -->`.
-3. The four stat values (Plants / Generators / Total MW / States), between
-   `<!-- BEGIN AUTOGEN STATS -->` and `<!-- END AUTOGEN STATS -->`.
-4. The `stateLayers` declaration in JS, between
-   `// BEGIN AUTOGEN STATE_LAYERS` and `// END AUTOGEN STATE_LAYERS`.
-5. The `wireToggle` calls in JS, between
-   `// BEGIN AUTOGEN WIRE_TOGGLES` and `// END AUTOGEN WIRE_TOGGLES`.
-6. The county FIPS array used by the Census tigerweb fetch, between
-   `// BEGIN AUTOGEN COUNTY_FIPS` and `// END AUTOGEN COUNTY_FIPS`.
+## Data source and filter
 
-If you edit the surrounding HTML or JS by hand, leave the marker pairs
-intact and the script will keep working.
-
-## Idempotency
-
-Running the script twice with the same xlsx produces a byte-identical
-`map.html`. Plants are sorted by Plant ID and generators are sorted by
-Generator ID so the diff between months is minimal.
-
-## Data filter
-
-Only the `Operating` sheet is read. `Planned`, `Retired`, `Canceled`, and
-the Puerto Rico `_PR` sheets are skipped. US territories (AS, GU, MP, PR,
-VI) are dropped from the result.
-
-## Monthly automation
-
-The next step is wiring this into `/schedule` so the script runs once a
-month and the map stays current without manual work. The cron-side
-command is just:
-
-```bash
-python3 "/Users/jasonmasters/Desktop/Ground Floor Energy/Research/Site Potentials/build_map.py"
-```
-
-EIA typically publishes the new EIA-860M around the 22nd of each month, so
-running on the 5th of the following month gives a comfortable buffer.
-
-## Dependencies
-
-- Python 3.9 or newer
-- `openpyxl` (already installed; verified on this machine)
-- Network access to `www.eia.gov` for the download path
+Reads only the `Operating` sheet from EIA-860M. Skips `Planned`, `Retired`,
+`Canceled`, and the Puerto Rico `_PR` sheets. US territories (AS, GU, MP, PR,
+VI) are dropped from the result so the map is CONUS + AK + HI + DC.

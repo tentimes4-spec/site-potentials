@@ -9,6 +9,11 @@ on:
     - cron: '37 13 5 * *'
   workflow_dispatch:
 
+# Opt in to Node.js 24 for action runtimes. Suppresses the Node 20 deprecation
+# warning and matches GitHub's June 2026 default.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 permissions:
   contents: write   # needed so the job can commit map.html back to the repo
   pages: write
